@@ -1,7 +1,14 @@
-import { Get, Injectable } from '@nestjs/common';
+import {
+  Get,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -16,15 +23,37 @@ export class UsersService {
     return this.prisma.user.findMany();
   }
 
-  async findOne(id: number) {
-    return this.prisma.user.findUnique({ where: { id } });
+  async findById(id: number) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    delete user.password;
+    return user;
+  }
+
+  async findByEmail(email: string) {
+    return this.prisma.user.findUnique({ where: { email } });
   }
 
   async update(id: number, updateUserDto: UpdateUserDto) {
-    return this.prisma.user.update({
+    if (updateUserDto.password != null) {
+      if (updateUserDto.password == '') {
+        throw new HttpException('Bad request', HttpStatus.BAD_REQUEST);
+      }
+      const harshedPW = await bcrypt.hash(updateUserDto.password, 10);
+      updateUserDto.password = harshedPW;
+    }
+
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: updateUserDto,
     });
+
+    delete updatedUser.password;
+
+    return updatedUser;
   }
 
   async remove(id: number) {
